@@ -12,9 +12,8 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && docker-php-ext-configure pdo_mysql --with-pdo-mysql=mysqlnd \
     && docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && rm -rf /var/lib/apt/lists/*
-
-COPY --from=composer:latest /usr/local/bin/composer /usr/local/bin/composer
 
 WORKDIR /app
 COPY . .
