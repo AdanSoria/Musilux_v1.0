@@ -103,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   child: const Text(
-                    'NUEVA COLECCIÓN 2025',
+                    'NUEVA COLECCIÓN 2026',
                     style: TextStyle(
                       color: AppColors.primaryPurple,
                       fontSize: 11,
