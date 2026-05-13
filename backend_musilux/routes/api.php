@@ -166,6 +166,9 @@ Route::post('/stripe/webhook', [PaymentController::class, 'webhook']);
 // recupere el estado de la sesión tras la redirección desde Stripe.
 Route::get('/checkout/session/{id}', [PaymentController::class, 'getCheckoutSession']);
 
+// Healthcheck (Railway)
+Route::get('/ping', fn () => response()->json(['status' => 'ok']));
+
 // ──────────────────────────────────────────────
 // Debug (solo desarrollo — eliminar en producción)
 // ──────────────────────────────────────────────
