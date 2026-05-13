@@ -4,5 +4,8 @@ nixPkgs = ["php84", "php84Packages.composer"]
 [phases.install]
 cmds = ["composer install --no-dev --optimize-autoloader"]
 
+[phases.build]
+cmds = []
+
 [start]
 cmd = "php artisan migrate --force; php -S 0.0.0.0:$PORT -t public"
