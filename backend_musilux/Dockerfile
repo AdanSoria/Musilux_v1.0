@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     curl \
     git \
+    ca-certificates \
     && docker-php-ext-configure pdo_mysql --with-pdo-mysql=mysqlnd \
     && docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd zip \
     && rm -rf /var/lib/apt/lists/*
