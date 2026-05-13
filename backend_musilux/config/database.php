@@ -60,14 +60,14 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_merge(
                 array_filter([
-                    (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env(
+                    (PHP_VERSION_ID >= 80400 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env(
                         'MYSQL_ATTR_SSL_CA',
                         env('APP_ENV') === 'production' ? '/etc/ssl/certs/ca-certificates.crt' : null
                     ),
                 ]),
                 [
-                    PDO::MYSQL_ATTR_GET_SERVER_PUBLIC_KEY  => true,
-                    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
+                    (PHP_VERSION_ID >= 80400 ? \Pdo\Mysql::ATTR_GET_SERVER_PUBLIC_KEY  : \PDO::MYSQL_ATTR_GET_SERVER_PUBLIC_KEY)  => true,
+                    (PHP_VERSION_ID >= 80400 ? \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT : \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT) => false,
                 ]
             ) : [],
         ],
