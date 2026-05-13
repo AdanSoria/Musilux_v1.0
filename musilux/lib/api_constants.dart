@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 class ApiConstants {
   // URL de producción en Railway — reemplazar con la URL real tras el deploy
-  static const String _prodUrl = 'https://TU-PROYECTO.up.railway.app/api';
+  static const String _prodUrl = 'https://musiluxv10-production.up.railway.app/api';
 
   // IP local para desarrollo (flutter run en debug)
   static const String _devIp = '10.11.5.71';
