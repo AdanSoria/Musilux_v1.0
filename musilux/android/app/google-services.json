@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "927811562748",
+    "project_id": "musilux",
+    "storage_bucket": "musilux.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:927811562748:android:8532ea373d16cf2304bb79",
+        "android_client_info": {
+          "package_name": "com.example.musilux"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABN8UFCIaav0h1u7z_y-rcS6efqkm6yBc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
