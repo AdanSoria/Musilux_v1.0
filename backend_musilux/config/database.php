@@ -65,10 +65,9 @@ return [
                         env('APP_ENV') === 'production' ? '/etc/ssl/certs/ca-certificates.crt' : null
                     ),
                 ]),
-                [
-                    (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_GET_SERVER_PUBLIC_KEY  : \PDO::MYSQL_ATTR_GET_SERVER_PUBLIC_KEY)  => true,
+                env('APP_ENV') === 'production' || env('MYSQL_ATTR_SSL_CA') ? [
                     (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT : \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT) => false,
-                ]
+                ] : []
             ) : [],
         ],
 
