@@ -6,7 +6,9 @@ import 'package:musilux/services/api_service.dart';
 import '../providers/cart_provider.dart';
 import '../theme/colors.dart';
 import '../widgets/shared_components.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final String? productId;
@@ -771,35 +773,66 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 }
 
 // ── YouTube Player ─────────────────────────────────────────────
-// Abre el video en la app de YouTube (o navegador) para evitar el
-// error 150/152 que YouTube lanza al intentar embeber videos en WebView.
+// Web: embebe el iframe de YouTube (funciona correctamente).
+// Android/iOS: abre la app de YouTube para evitar el error 150/152
+// que YouTube lanza al intentar embeber en WebView nativo.
 
-class _YoutubeAudioPlayer extends StatelessWidget {
+class _YoutubeAudioPlayer extends StatefulWidget {
   final Product product;
   const _YoutubeAudioPlayer({required this.product});
 
+  @override
+  State<_YoutubeAudioPlayer> createState() => _YoutubeAudioPlayerState();
+}
+
+class _YoutubeAudioPlayerState extends State<_YoutubeAudioPlayer> {
+  YoutubePlayerController? _controller;
+  bool _playerVisible = false;
+
   static const _ytRed = Color(0xFFFF0000);
 
-  Future<void> _openVideo(BuildContext context) async {
-    final videoId = product.youtubeVideoId;
-    if (videoId == null) return;
-    final uri = Uri.parse('https://www.youtube.com/watch?v=$videoId');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir YouTube')),
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      final videoId = widget.product.youtubeVideoId;
+      if (videoId != null) {
+        _controller = YoutubePlayerController.fromVideoId(
+          videoId: videoId,
+          autoPlay: false,
+          params: const YoutubePlayerParams(
+            showControls: true,
+            showFullscreenButton: true,
+            mute: false,
+          ),
         );
       }
     }
   }
 
   @override
+  void dispose() {
+    _controller?.close();
+    super.dispose();
+  }
+
+  Future<void> _openInApp(BuildContext context) async {
+    final videoId = widget.product.youtubeVideoId;
+    if (videoId == null) return;
+    final uri = Uri.parse('https://www.youtube.com/watch?v=$videoId');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir YouTube')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final p = product;
+    final p = widget.product;
     final isMobile = MediaQuery.of(context).size.width < 800;
-    final h = isMobile ? 200.0 : 260.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -828,130 +861,142 @@ class _YoutubeAudioPlayer extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        GestureDetector(
-          onTap: () => _openVideo(context),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F0F0F),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                if (p.youtubeThumbnail != null)
-                  CachedNetworkImage(
-                    imageUrl: p.youtubeThumbnail!,
-                    width: double.infinity,
-                    height: h,
-                    fit: BoxFit.cover,
-                    placeholder: (ctx, url) =>
-                        Container(height: h, color: const Color(0xFF282828)),
-                    errorWidget: (ctx, url, err) => Container(
-                      height: h,
-                      color: const Color(0xFF282828),
-                      child: const Icon(
-                        Icons.play_circle_outline,
-                        color: Colors.white54,
-                        size: 48,
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    width: double.infinity,
-                    height: h,
-                    color: const Color(0xFF282828),
-                    child: const Icon(
-                      Icons.play_circle_outline,
-                      color: Colors.white54,
-                      size: 48,
-                    ),
-                  ),
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: _ytRed,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _ytRed.withValues(alpha: 0.5),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 36,
-                  ),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F0F0F),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: kIsWeb && _playerVisible && _controller != null
+              ? YoutubePlayerScaffold(
+                  controller: _controller!,
+                  builder: (context, player) => player,
+                )
+              : _buildThumbnail(p, isMobile),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThumbnail(Product p, bool isMobile) {
+    final h = isMobile ? 200.0 : 260.0;
+    return GestureDetector(
+      onTap: () {
+        if (kIsWeb) {
+          setState(() => _playerVisible = true);
+          _controller?.playVideo();
+        } else {
+          _openInApp(context);
+        }
+      },
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (p.youtubeThumbnail != null)
+            CachedNetworkImage(
+              imageUrl: p.youtubeThumbnail!,
+              width: double.infinity,
+              height: h,
+              fit: BoxFit.cover,
+              placeholder: (ctx, url) =>
+                  Container(height: h, color: const Color(0xFF282828)),
+              errorWidget: (ctx, url, err) => Container(
+                height: h,
+                color: const Color(0xFF282828),
+                child: const Icon(
+                  Icons.play_circle_outline,
+                  color: Colors.white54,
+                  size: 48,
                 ),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [Color(0xDD000000), Colors.transparent],
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (p.youtubeTitle != null)
-                          Text(
-                            p.youtubeTitle!,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        if (p.youtubeChannel != null)
-                          Text(
-                            p.youtubeChannel!,
-                            style: const TextStyle(
-                              color: Color(0xFFB3B3B3),
-                              fontSize: 11,
-                            ),
-                          ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.open_in_new,
-                              color: Colors.white70,
-                              size: 12,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Abrir en YouTube',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              height: h,
+              color: const Color(0xFF282828),
+              child: const Icon(
+                Icons.play_circle_outline,
+                color: Colors.white54,
+                size: 48,
+              ),
+            ),
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: _ytRed,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: _ytRed.withValues(alpha: 0.5),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
+            child: const Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 36,
+            ),
           ),
-        ),
-      ],
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xDD000000), Colors.transparent],
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (p.youtubeTitle != null)
+                    Text(
+                      p.youtubeTitle!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  if (p.youtubeChannel != null)
+                    Text(
+                      p.youtubeChannel!,
+                      style: const TextStyle(
+                        color: Color(0xFFB3B3B3),
+                        fontSize: 11,
+                      ),
+                    ),
+                  if (!kIsWeb) ...[
+                    const SizedBox(height: 4),
+                    const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new, color: Colors.white70, size: 12),
+                        SizedBox(width: 4),
+                        Text(
+                          'Abrir en YouTube',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
