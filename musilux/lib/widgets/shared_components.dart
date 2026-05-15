@@ -464,8 +464,9 @@ class CartDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hacemos el drawer más ancho para que ocupe más espacio en pantalla
-    final drawerWidth = MediaQuery.of(context).size.width * 0.35;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 800;
+    final drawerWidth = isMobile ? screenWidth * 0.88 : screenWidth * 0.35;
     return SizedBox(
       width: drawerWidth,
       child: Drawer(
@@ -555,9 +556,10 @@ class _CartHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top + 16;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 48, 12, 16),
+      padding: EdgeInsets.fromLTRB(20, topPad, 12, 16),
       decoration: const BoxDecoration(color: AppColors.headerBg),
       child: Row(
         children: [

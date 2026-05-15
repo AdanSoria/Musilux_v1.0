@@ -15,8 +15,15 @@ class PaymentController extends Controller
 {
     public function __construct()
     {
-        // Aseguramos la clave de Stripe está configurada
-        Stripe::setApiKey(config('services.stripe.secret'));
+        $secret = config('services.stripe.secret');
+        if ($secret) {
+            Stripe::setApiKey($secret);
+        }
+    }
+
+    private function stripeConfigured(): bool
+    {
+        return !empty(config('services.stripe.secret'));
     }
 
     /**
@@ -26,6 +33,11 @@ class PaymentController extends Controller
      */
     public function createPaymentIntent(Request $request)
     {
+        if (!$this->stripeConfigured()) {
+            Log::error('Stripe not configured: STRIPE_SECRET env var is missing.');
+            return response()->json(['message' => 'Payment service not configured. Contact support.'], 500);
+        }
+
         $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
         ]);
@@ -63,6 +75,11 @@ class PaymentController extends Controller
      */
     public function createCheckoutSession(Request $request)
     {
+        if (!$this->stripeConfigured()) {
+            Log::error('Stripe not configured: STRIPE_SECRET env var is missing.');
+            return response()->json(['message' => 'Payment service not configured. Contact support.'], 500);
+        }
+
         $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'items' => ['required', 'array',],
