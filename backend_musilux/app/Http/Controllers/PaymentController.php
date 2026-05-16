@@ -72,6 +72,7 @@ class PaymentController extends Controller
         $total     = $amountFloat - $discount;
         $subtotal  = $total / (1 + $ivaRate);
 
+        // Construir línea de dirección de envío (sin datos de contacto)
         $direccionParts = array_filter([$calle, $apto]);
         $localParts     = array_filter([$ciudad, $estado, $cp, $pais]);
         if (!empty($localParts)) {
@@ -79,28 +80,35 @@ class PaymentController extends Controller
         }
         $direccionEnvio = implode(' • ', $direccionParts);
 
-        $guiaParts = [trim("$nombre $apellido"), $direccionEnvio];
-        if ($telefono) $guiaParts[] = "Tel: $telefono";
-        $guiaEnvio = implode(' • ', $guiaParts);
+        // direccion_envio almacena toda la info de contacto+dirección (campo TEXT)
+        // guia_envio queda null — se usa para el número de guía de paquetería (admin lo llena al enviar)
+        $contactParts = array_filter([
+            trim("$nombre $apellido"),
+            $direccionEnvio,
+            $telefono ? "Tel: $telefono" : null,
+        ]);
+        $fullShippingInfo = implode(' • ', $contactParts);
 
         $userId   = $request->user()?->id;
         $pedidoId = null;
 
+        $step = 'init';
         DB::beginTransaction();
         try {
+            $step     = 'insert_pedido';
             $pedidoId = (string) Str::uuid();
 
             DB::table('pedidos')->insert([
-                'id'             => $pedidoId,
-                'id_usuario'     => $userId,
-                'id_cupon'       => null,
-                'estado'         => 'pendiente',
-                'subtotal'       => round($subtotal, 2),
-                'descuento'      => $discount,
-                'total'          => round($total, 2),
-                'direccion_envio' => $direccionEnvio,
-                'guia_envio'     => $guiaEnvio,
-                'creado_en'      => now(),
+                'id'              => $pedidoId,
+                'id_usuario'      => $userId,
+                'id_cupon'        => null,
+                'estado'          => 'pendiente',
+                'subtotal'        => round($subtotal, 2),
+                'descuento'       => $discount,
+                'total'           => round($total, 2),
+                'direccion_envio' => $fullShippingInfo,
+                'guia_envio'      => null,
+                'creado_en'       => now(),
             ]);
 
             foreach ($items as $it) {
@@ -126,6 +134,7 @@ class PaymentController extends Controller
                     if ($img) $imgProd = $img;
                 }
 
+                $step = 'insert_items';
                 DB::table('items_pedido')->insert([
                     'id_pedido'       => $pedidoId,
                     'id_producto'     => $idProducto,
@@ -138,10 +147,16 @@ class PaymentController extends Controller
                 ]);
             }
 
+            // allow_redirects:'never' asegura que Stripe solo devuelva métodos
+            // compatibles con PaymentSheet nativo (sin redirecciones a browser).
+            $step = 'stripe_pi';
             $pi = PaymentIntent::create([
                 'amount'   => $amountCents,
                 'currency' => 'mxn',
-                'automatic_payment_methods' => ['enabled' => true],
+                'automatic_payment_methods' => [
+                    'enabled'         => true,
+                    'allow_redirects' => 'never',
+                ],
                 'metadata' => [
                     'platform'   => 'musilux',
                     'id_pedido'  => $pedidoId,
@@ -157,8 +172,15 @@ class PaymentController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('createPaymentIntent error: ' . $e->getMessage());
-            return response()->json(['message' => 'Error al crear el pago'], 500);
+            Log::error("createPaymentIntent error at [$step]: " . $e->getMessage(), [
+                'amount'   => $amountFloat,
+                'userId'   => $userId,
+                'pedidoId' => $pedidoId,
+            ]);
+            return response()->json([
+                'message' => 'Error al crear el pago',
+                'detail'  => app()->isLocal() ? $e->getMessage() : null,
+            ], 500);
         }
     }
 
@@ -266,27 +288,30 @@ class PaymentController extends Controller
                 }
             }
 
-            // Construir guia_envio: "Nombre Apellido • Dirección • Tel: ..." (si hay nombre/telefono)
-            $guiaParts = [];
-            if ($nombre !== null || $apellido !== null) {
-                $fullName = trim(($nombre ?? '') . ' ' . ($apellido ?? ''));
-                if ($fullName !== '') $guiaParts[] = $fullName;
-            }
-            if ($direccionEnvio !== null) $guiaParts[] = $direccionEnvio;
-            if ($telefono !== null) $guiaParts[] = 'Tel: ' . $telefono;
-            $guiaEnvio = !empty($guiaParts) ? implode(' • ', $guiaParts) : null;
+            // direccion_envio almacena toda la info de contacto+dirección (campo TEXT)
+            // guia_envio queda null — se usa para número de guía de paquetería (admin lo llena al enviar)
+            $contactParts = array_filter([
+                ($nombre !== null || $apellido !== null)
+                    ? trim(($nombre ?? '') . ' ' . ($apellido ?? ''))
+                    : null,
+                $direccionEnvio,
+                $telefono !== null ? 'Tel: ' . $telefono : null,
+            ]);
+            $fullShippingInfo = !empty($contactParts)
+                ? implode(' • ', $contactParts)
+                : $direccionEnvio;
 
             DB::table('pedidos')->insert([
-                'id' => $pedidoId,
-                'id_usuario' => $userId,
-                'id_cupon' => null,
-                'estado' => 'pendiente',
-                'subtotal' => round($subtotal, 2),
-                'descuento' => $discountVal,
-                'total' => round($total, 2),
-                'direccion_envio' => $direccionEnvio,
-                'guia_envio' => $guiaEnvio,
-                'creado_en' => now(),
+                'id'              => $pedidoId,
+                'id_usuario'      => $userId,
+                'id_cupon'        => null,
+                'estado'          => 'pendiente',
+                'subtotal'        => round($subtotal, 2),
+                'descuento'       => $discountVal,
+                'total'           => round($total, 2),
+                'direccion_envio' => $fullShippingInfo,
+                'guia_envio'      => null,
+                'creado_en'       => now(),
             ]);
 
             $stripeLineItems = [];
@@ -412,42 +437,66 @@ class PaymentController extends Controller
     }
 
     /**
-     * Webhook básico para recibir eventos de Stripe (opcional)
+     * Webhook de Stripe — verifica firma si STRIPE_WEBHOOK_SECRET está configurado.
+     * Registrar en Stripe Dashboard → Developers → Webhooks:
+     *   URL: https://<tu-app>.railway.app/api/stripe/webhook
+     *   Eventos: payment_intent.succeeded, checkout.session.completed
      */
     public function webhook(Request $request)
     {
-        // Por simplicidad procesamos el payload directamente. En producción usar Stripe\Webhook y verificar signature.
-        $payload = $request->getContent();
-        $event = json_decode($payload, true);
-        Log::info('Stripe webhook received', $event ?? []);
+        $payload    = $request->getContent();
+        $sigHeader  = $request->header('Stripe-Signature');
+        $secret     = config('services.stripe.webhook_secret');
 
-        // Manejar eventos relevantes
-        if (isset($event['type'])) {
-            switch ($event['type']) {
-                case 'checkout.session.completed':
-                    // Cuando Checkout completa, buscar metadata.id_pedido y marcar confirmado
-                    $session = $event['data']['object'] ?? null;
-                    $pedidoId = $session['metadata']['id_pedido'] ?? null;
-                    if ($pedidoId) {
-                        DB::table('pedidos')->where('id', $pedidoId)->update(['estado' => 'confirmado', 'actualizado_en' => now()]);
-                        Log::info('Pedido marcado como confirmado: ' . $pedidoId);
-                    } else {
-                        Log::warning('checkout.session.completed sin metadata.id_pedido');
-                    }
-                    break;
-                case 'payment_intent.succeeded':
-                    $pi       = $event['data']['object'] ?? null;
-                    $pedidoId = $pi['metadata']['id_pedido'] ?? null;
-                    if ($pedidoId) {
-                        DB::table('pedidos')
-                            ->where('id', $pedidoId)
-                            ->update(['estado' => 'confirmado', 'actualizado_en' => now()]);
-                        Log::info('Pedido móvil confirmado: ' . $pedidoId);
-                    } else {
-                        Log::info('PaymentIntent succeeded sin id_pedido: ' . ($pi['id'] ?? ''));
-                    }
-                    break;
+        if ($secret) {
+            try {
+                $event = \Stripe\Webhook::constructEvent($payload, $sigHeader, $secret);
+            } catch (\Stripe\Exception\SignatureVerificationException $e) {
+                Log::warning('Stripe webhook: firma inválida — ' . $e->getMessage());
+                return response()->json(['error' => 'Invalid signature'], 400);
+            } catch (\UnexpectedValueException $e) {
+                Log::warning('Stripe webhook: payload inválido — ' . $e->getMessage());
+                return response()->json(['error' => 'Invalid payload'], 400);
             }
+            // constructEvent devuelve un objeto Stripe\Event; normalizar a array
+            $event = $event->toArray();
+        } else {
+            // Sin secret configurado (desarrollo local) — procesar directamente
+            $event = json_decode($payload, true);
+            if (!$event) {
+                return response()->json(['error' => 'Invalid payload'], 400);
+            }
+        }
+
+        $type = $event['type'] ?? 'unknown';
+        Log::info("Stripe webhook: $type");
+
+        switch ($type) {
+            case 'checkout.session.completed':
+                $obj      = $event['data']['object'] ?? [];
+                $pedidoId = $obj['metadata']['id_pedido'] ?? null;
+                if ($pedidoId) {
+                    DB::table('pedidos')
+                        ->where('id', $pedidoId)
+                        ->update(['estado' => 'confirmado']);
+                    Log::info("Pedido web confirmado: $pedidoId");
+                } else {
+                    Log::warning('checkout.session.completed sin metadata.id_pedido');
+                }
+                break;
+
+            case 'payment_intent.succeeded':
+                $obj      = $event['data']['object'] ?? [];
+                $pedidoId = $obj['metadata']['id_pedido'] ?? null;
+                if ($pedidoId) {
+                    DB::table('pedidos')
+                        ->where('id', $pedidoId)
+                        ->update(['estado' => 'confirmado']);
+                    Log::info("Pedido móvil confirmado: $pedidoId");
+                } else {
+                    Log::info('payment_intent.succeeded sin id_pedido: ' . ($obj['id'] ?? ''));
+                }
+                break;
         }
 
         return response()->json(['received' => true]);
