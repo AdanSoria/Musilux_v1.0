@@ -177,9 +177,11 @@ class PaymentController extends Controller
                 'userId'   => $userId,
                 'pedidoId' => $pedidoId,
             ]);
+            // Detalle visible temporalmente para diagnóstico — quitar en producción final
             return response()->json([
                 'message' => 'Error al crear el pago',
-                'detail'  => app()->isLocal() ? $e->getMessage() : null,
+                'step'    => $step,
+                'detail'  => $e->getMessage(),
             ], 500);
         }
     }
@@ -434,6 +436,63 @@ class PaymentController extends Controller
             Log::error('Stripe retrieve session error: ' . $e->getMessage());
             return response()->json(['message' => 'Error retrieving session: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Diagnóstico de configuración — GET /api/checkout/diagnose
+     * Eliminar antes de producción final.
+     */
+    public function diagnose()
+    {
+        $result = [];
+
+        // 1. Claves Stripe
+        $secret      = config('services.stripe.secret');
+        $publishable  = config('services.stripe.key');
+        $webhookSec  = config('services.stripe.webhook_secret');
+        $result['stripe_secret_set']         = !empty($secret);
+        $result['stripe_secret_prefix']      = $secret ? substr($secret, 0, 7) . '...' : null;
+        $result['stripe_publishable_set']    = !empty($publishable);
+        $result['stripe_publishable_prefix'] = $publishable ? substr($publishable, 0, 7) . '...' : null;
+        $result['stripe_webhook_secret_set'] = !empty($webhookSec);
+
+        // 2. Conexión a BD
+        try {
+            $count = DB::table('pedidos')->count();
+            $result['db_connected']    = true;
+            $result['pedidos_count']   = $count;
+        } catch (\Exception $e) {
+            $result['db_connected'] = false;
+            $result['db_error']     = $e->getMessage();
+        }
+
+        // 3. Llamada real a Stripe
+        if (!empty($secret)) {
+            try {
+                // Listar 1 PaymentIntent para verificar autenticación
+                $list = PaymentIntent::all(['limit' => 1]);
+                $result['stripe_api_ok'] = true;
+            } catch (\Stripe\Exception\AuthenticationException $e) {
+                $result['stripe_api_ok']    = false;
+                $result['stripe_api_error'] = 'Auth failed: ' . $e->getMessage();
+            } catch (\Exception $e) {
+                $result['stripe_api_ok']    = false;
+                $result['stripe_api_error'] = $e->getMessage();
+            }
+        } else {
+            $result['stripe_api_ok'] = false;
+            $result['stripe_api_error'] = 'STRIPE_SECRET not set';
+        }
+
+        // 4. Columnas de la tabla pedidos
+        try {
+            $cols = DB::select("SHOW COLUMNS FROM pedidos");
+            $result['pedidos_columns'] = array_column($cols, 'Field');
+        } catch (\Exception $e) {
+            $result['pedidos_columns_error'] = $e->getMessage();
+        }
+
+        return response()->json($result);
     }
 
     /**

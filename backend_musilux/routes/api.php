@@ -169,6 +169,9 @@ Route::get('/checkout/session/{id}', [PaymentController::class, 'getCheckoutSess
 // Healthcheck (Railway)
 Route::get('/ping', fn () => response()->json(['status' => 'ok']));
 
+// Diagnóstico de pago — quitar antes de producción final
+Route::get('/checkout/diagnose', [PaymentController::class, 'diagnose']);
+
 // ──────────────────────────────────────────────
 // Debug (solo desarrollo — eliminar en producción)
 // ──────────────────────────────────────────────
