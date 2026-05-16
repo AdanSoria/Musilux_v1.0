@@ -29,7 +29,6 @@ class AuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'id_rol'    => 'required|integer|exists:roles,id',
             'nombres'   => 'required|string|max:100',
             'apellidos' => 'required|string|max:100',
             'correo'    => 'required|email|max:255|unique:usuarios,correo',
@@ -42,9 +41,6 @@ class AuthController extends Controller
                 'regex:/[0-9]/',      // al menos un número
             ],
         ], [
-            'id_rol.required'    => 'El rol es obligatorio.',
-            'id_rol.integer'     => 'El rol debe ser un valor numérico.',
-            'id_rol.exists'      => 'El rol seleccionado no existe.',
             'nombres.required'   => 'Los nombres son obligatorios.',
             'nombres.max'        => 'Los nombres no pueden superar 100 caracteres.',
             'apellidos.required' => 'Los apellidos son obligatorios.',
@@ -59,7 +55,7 @@ class AuthController extends Controller
         ]);
 
         $user = User::create([
-            'id_rol'          => $data['id_rol'],
+            'id_rol'          => 2,
             'nombres'         => $data['nombres'],
             'apellidos'       => $data['apellidos'],
             'correo'          => $data['correo'],

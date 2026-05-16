@@ -127,6 +127,12 @@ class _SoporteDashboardState extends State<SoporteDashboard> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.store_outlined),
+            tooltip: 'Ver tienda',
+            onPressed: () =>
+                Navigator.pushNamed(context, AppRoutes.catalogoPublico),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _cargarTickets,
           ),

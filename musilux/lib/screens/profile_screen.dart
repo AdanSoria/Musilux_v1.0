@@ -8,12 +8,6 @@ import '../widgets/shared_components.dart';
 import '../theme/colors.dart';
 import 'profile_edit.dart';
 
-class _RoleOption {
-  final int id;
-  final String nombre;
-  _RoleOption({required this.id, required this.nombre});
-}
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -36,11 +30,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _apellidosController = TextEditingController();
   final _correoController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  // Roles
-  List<_RoleOption> _roles = [];
-  int? _selectedRolId;
-  bool _loadingRoles = false;
 
   // Usuario autenticado
   AuthUser? _currentUser;
@@ -91,40 +80,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _loadRoles() async {
-    if (_loadingRoles) return;
-    setState(() => _loadingRoles = true);
-    try {
-      final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/roles'),
-        headers: {'Accept': 'application/json'},
-      );
-      if (response.statusCode == 200) {
-        final raw = jsonDecode(response.body);
-        final list =
-            (raw is List ? raw : (raw['data'] ?? raw['roles'] ?? [])) as List;
-        final loaded = list
-            .map(
-              (r) => _RoleOption(
-                id: r['id'] as int,
-                nombre: r['nombre']?.toString() ?? r['name']?.toString() ?? '',
-              ),
-            )
-            .toList();
-        if (mounted) {
-          setState(() {
-            _roles = loaded;
-            if (_roles.isNotEmpty) _selectedRolId = _roles.first.id;
-          });
-        }
-      }
-    } catch (_) {
-      // No bloquear el formulario si los roles no cargan
-    } finally {
-      if (mounted) setState(() => _loadingRoles = false);
-    }
-  }
-
   Future<void> _registrarse() async {
     if (_nombresController.text.trim().isEmpty ||
         _apellidosController.text.trim().isEmpty ||
@@ -133,18 +88,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _errorMessage = 'Completa todos los campos.');
       return;
     }
-    if (_selectedRolId == null) {
-      setState(() => _errorMessage = 'Selecciona un rol.');
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     final result = await _authService.register(
-      idRol: _selectedRolId!,
       nombres: _nombresController.text.trim(),
       apellidos: _apellidosController.text.trim(),
       correo: _correoController.text.trim(),
@@ -401,42 +350,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           controller: _passwordController,
           isPassword: true,
         ),
-        const SizedBox(height: 16),
-
-        // Selector de rol
-        _loadingRoles
-            ? const Center(
-                child: SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            : DropdownButtonFormField<int>(
-                value: _selectedRolId,
-                decoration: InputDecoration(
-                  labelText: 'Rol',
-                  prefixIcon: const Icon(Icons.badge_outlined),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: const BorderSide(
-                      color: AppColors.primaryPurple,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                hint: const Text('Selecciona un rol'),
-                items: _roles
-                    .map(
-                      (r) =>
-                          DropdownMenuItem(value: r.id, child: Text(r.nombre)),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedRolId = v),
-              ),
-
         const SizedBox(height: 12),
         if (_errorMessage != null) _buildError(_errorMessage!),
 
@@ -541,13 +454,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 15),
         Center(
           child: TextButton(
-            onPressed: () {
-              setState(() {
-                _isLoginView = false;
-                _errorMessage = null;
-              });
-              if (_roles.isEmpty) _loadRoles();
-            },
+            onPressed: () => setState(() {
+              _isLoginView = false;
+              _errorMessage = null;
+            }),
             child: const Text(
               '¿No tienes cuenta? Regístrate aquí',
               style: TextStyle(color: AppColors.primaryPurple),

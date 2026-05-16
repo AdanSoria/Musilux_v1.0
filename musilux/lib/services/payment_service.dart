@@ -92,6 +92,81 @@ class PaymentService {
     }
   }
 
+  /// Móvil: crea la orden en el backend y presenta el PaymentSheet nativo.
+  /// [payload] debe incluir amount, items, y los campos de dirección individuales.
+  Future<Map<String, dynamic>> payWithPaymentSheetAndOrder(
+    Map<String, dynamic> payload,
+  ) async {
+    if (kIsWeb) {
+      return {
+        'success': false,
+        'message': 'Usa createCheckoutSessionUrl para pagos en web.',
+      };
+    }
+    try {
+      final uri = Uri.parse(
+        '${ApiConstants.baseUrl}/checkout/create-payment-intent',
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+
+      final resp = await http.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(payload),
+      );
+
+      if (resp.statusCode != 200) {
+        return {
+          'success': false,
+          'message': 'Error del servidor: ${resp.statusCode}',
+        };
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final clientSecret = data['client_secret'] as String?;
+      final publishableKey = data['publishableKey'] as String?;
+
+      if (clientSecret == null || publishableKey == null) {
+        return {
+          'success': false,
+          'message': 'Respuesta inválida del servidor.',
+        };
+      }
+
+      Stripe.publishableKey = publishableKey;
+      await Stripe.instance.applySettings();
+
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: clientSecret,
+          merchantDisplayName: 'Musilux',
+        ),
+      );
+
+      await Stripe.instance.presentPaymentSheet();
+      return {'success': true};
+    } on StripeException catch (e) {
+      final msg = e.error.localizedMessage ?? e.error.message ?? 'Error de pago';
+      // ignore: avoid_print
+      print('StripeException: $msg');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      // ignore: avoid_print
+      print('payWithPaymentSheetAndOrder error: $e');
+      return {'success': false, 'message': 'Error inesperado: $e'};
+    }
+  }
+
   /// Para web: crea una sesión de Stripe Checkout en el backend y devuelve la URL
   /// Retorna {'success': bool, 'url': String? , 'message': String? }
   /// Crea una sesión de Checkout pasando un payload con 'items', 'subtotal', etc.

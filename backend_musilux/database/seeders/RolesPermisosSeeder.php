@@ -93,6 +93,12 @@ class RolesPermisosSeeder extends Seeder
             $pid('cupones.leer'),
             $pid('cupones.crear'),
             $pid('cupones.actualizar'),
+            $pid('productos.leer'),
+            $pid('productos.crear'),
+            $pid('productos.actualizar'),
+            $pid('productos.eliminar'),
+            $pid('pedidos.leer'),
+            $pid('pedidos.actualizar'),
         ]);
 
         // admin_soporte (id=7)
@@ -100,6 +106,8 @@ class RolesPermisosSeeder extends Seeder
             $pid('tickets.leer'),
             $pid('tickets.crear'),
             $pid('tickets.actualizar'),
+            $pid('usuarios.leer'),
+            $pid('usuarios.actualizar'),
         ]);
 
         // superadmin (id=1): TODOS los permisos

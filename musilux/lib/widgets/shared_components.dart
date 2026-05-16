@@ -971,258 +971,69 @@ class _CartResumen extends StatelessWidget {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () async {
+                // Step 1: Formulario de envío — unificado para web y móvil
+                final addressData = await _showShippingForm(context);
+                if (addressData == null || !context.mounted) return;
+
                 final scaffold = ScaffoldMessenger.of(context);
                 scaffold.showSnackBar(
                   const SnackBar(
-                    content: Text('Iniciando pago...'),
+                    content: Text('Procesando pago...'),
                     behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 60),
                   ),
                 );
 
                 final paymentService = PaymentService();
+                final payload = cart.buildOrdenPayload('');
+                payload['amount'] = cart.total;
+                payload.addAll(addressData);
 
-                // Web flow: use Stripe Checkout (hosted) since PaymentSheet is not supported
                 if (kIsWeb) {
-                  // Pedir dirección de envío con formulario estructurado
-                  final nombreCtrl = TextEditingController();
-                  final apellidoCtrl = TextEditingController();
-                  final calleCtrl = TextEditingController();
-                  final aptoCtrl = TextEditingController();
-                  final ciudadCtrl = TextEditingController();
-                  final estadoCtrl = TextEditingController();
-                  final postalCtrl = TextEditingController();
-                  final telefonoCtrl = TextEditingController();
-                  String paisValue = 'Mexico';
-
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => StatefulBuilder(
-                      builder: (ctx2, setState2) {
-                        return AlertDialog(
-                          title: const Text('Dirección de envío'),
-                          content: SingleChildScrollView(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: nombreCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Nombre',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: apellidoCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Apellido',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: calleCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Calle y número',
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: aptoCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Apto / Colonia (opcional)',
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: ciudadCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Ciudad',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: estadoCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Estado / Provincia',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: postalCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Código postal',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: DropdownButtonFormField<String>(
-                                        value: paisValue,
-                                        items: const [
-                                          DropdownMenuItem(
-                                            value: 'Mexico',
-                                            child: Text('Mexico'),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: 'Peru',
-                                            child: Text('Peru'),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: 'USA',
-                                            child: Text('USA'),
-                                          ),
-                                        ],
-                                        onChanged: (v) => setState2(
-                                          () => paisValue = v ?? paisValue,
-                                        ),
-                                        decoration: const InputDecoration(
-                                          labelText: 'País',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: telefonoCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Teléfono (opcional)',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx2, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () {
-                                // Validación mínima: campos obligatorios
-                                if (nombreCtrl.text.trim().isEmpty ||
-                                    calleCtrl.text.trim().isEmpty ||
-                                    ciudadCtrl.text.trim().isEmpty ||
-                                    postalCtrl.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(ctx2).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Completa Nombre, Calle, Ciudad y Código postal',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                Navigator.pop(ctx2, true);
-                              },
-                              child: const Text('Continuar'),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  );
-
-                  if (ok != true) {
-                    scaffold.hideCurrentSnackBar();
-                    scaffold.showSnackBar(
-                      const SnackBar(
-                        content: Text('Pago cancelado: dirección requerida'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  // Construir dirección combinada para persistir en DB
-                  final parts = <String>[];
-                  final nombre = nombreCtrl.text.trim();
-                  final apellido = apellidoCtrl.text.trim();
-                  final calle = calleCtrl.text.trim();
-                  if (calle.isNotEmpty) parts.add(calle);
-                  final apto = aptoCtrl.text.trim();
-                  if (apto.isNotEmpty) parts.add(apto);
-                  final ciudad = ciudadCtrl.text.trim();
-                  final estado = estadoCtrl.text.trim();
-                  final postal = postalCtrl.text.trim();
-                  final pais = paisValue;
-                  final telefono = telefonoCtrl.text.trim();
-                  final locale = [
-                    if (ciudad.isNotEmpty) ciudad,
-                    if (estado.isNotEmpty) estado,
-                    if (postal.isNotEmpty) postal,
-                    if (pais.isNotEmpty) pais,
-                  ].join(', ');
-                  if (locale.isNotEmpty) parts.add(locale);
-                  if (telefono.isNotEmpty) parts.add('Tel: $telefono');
-
-                  final direccionEnvio = parts.join(' • ');
-
-                  final payload = cart.buildOrdenPayload(direccionEnvio);
-                  payload['amount'] = cart.total;
-                  payload['direccion_envio'] = direccionEnvio;
-                  // Añadir campos individuales para que el backend construya la guia_envio
-                  payload['nombre'] = nombre;
-                  payload['apellido'] = apellido;
-                  payload['telefono'] = telefono;
-
-                  final resp = await paymentService.createCheckoutSessionUrl(
-                    payload,
-                  );
+                  // Web: Stripe Checkout (sesión con redirect)
+                  final resp =
+                      await paymentService.createCheckoutSessionUrl(payload);
+                  scaffold.hideCurrentSnackBar();
                   if (resp['success'] == true && resp['url'] != null) {
-                    final url = resp['url'] as String;
-                    // Open in new tab/window (no-op on non-web)
-                    openUrlInBrowser(url);
+                    openUrlInBrowser(resp['url'] as String);
                     scaffold.showSnackBar(
                       const SnackBar(
                         content: Text('Redirigiendo a Stripe Checkout...'),
+                        behavior: SnackBarBehavior.floating,
                       ),
                     );
-                    // keep drawer open — user will return to the site after checkout
-                    return;
                   } else {
-                    final message =
-                        resp['message']?.toString() ??
-                        'Error creando sesión de pago.';
-                    scaffold.showSnackBar(SnackBar(content: Text(message)));
-                    return;
+                    scaffold.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          resp['message']?.toString() ??
+                              'Error al crear sesión de pago',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
                   }
-                }
-
-                // Mobile/native flow: PaymentSheet
-                try {
-                  final result = await paymentService.payWithPaymentSheet(
-                    cart.total,
-                  );
+                } else {
+                  // Móvil: PaymentSheet — el backend crea la orden antes del pago
+                  final result =
+                      await paymentService.payWithPaymentSheetAndOrder(payload);
+                  scaffold.hideCurrentSnackBar();
                   final ok = result['success'] == true;
-                  final message =
-                      result['message']?.toString() ??
-                      (ok
-                          ? 'Pago realizado correctamente'
-                          : 'Error al procesar el pago');
-                  scaffold.showSnackBar(SnackBar(content: Text(message)));
-                  if (ok) Navigator.pop(context);
-                } catch (e) {
                   scaffold.showSnackBar(
-                    SnackBar(content: Text('Error al iniciar pago: $e')),
+                    SnackBar(
+                      content: Text(
+                        ok
+                            ? '¡Pago realizado! Tu pedido ha sido registrado.'
+                            : (result['message']?.toString() ??
+                                'Error al procesar el pago'),
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
                   );
+                  if (ok && context.mounted) {
+                    await cart.vaciarCarrito();
+                    if (context.mounted) Navigator.pop(context);
+                  }
                 }
               },
               icon: const Icon(Icons.lock_outline, size: 18),
@@ -1274,6 +1085,320 @@ class _LineaCalculo extends StatelessWidget {
         Text(label, style: style),
         Text('\$${valor.toStringAsFixed(2)}', style: style),
       ],
+    );
+  }
+}
+
+// ── Checkout: formulario profesional de dirección de envío ────────────────────
+
+Future<Map<String, dynamic>?> _showShippingForm(BuildContext context) {
+  final formKey = GlobalKey<FormState>();
+  final nombreCtrl = TextEditingController();
+  final apellidoCtrl = TextEditingController();
+  final calleCtrl = TextEditingController();
+  final aptoCtrl = TextEditingController();
+  final ciudadCtrl = TextEditingController();
+  final estadoCtrl = TextEditingController();
+  final postalCtrl = TextEditingController();
+  final telefonoCtrl = TextEditingController();
+  String pais = 'Mexico';
+
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Cabecera púrpura ─────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryPurple,
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.local_shipping_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Información de envío',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              // ── Formulario con scroll ────────────────────────────────────
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _ShippingSectionLabel(
+                          icon: Icons.person_outline,
+                          text: 'Datos del destinatario',
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ShippingField(
+                                ctrl: nombreCtrl,
+                                label: 'Nombre',
+                                required: true,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ShippingField(
+                                ctrl: apellidoCtrl,
+                                label: 'Apellido',
+                                required: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _ShippingField(
+                          ctrl: telefonoCtrl,
+                          label: 'Teléfono (opcional)',
+                          prefixIcon: Icons.phone_outlined,
+                          keyboard: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 20),
+                        const _ShippingSectionLabel(
+                          icon: Icons.place_outlined,
+                          text: 'Dirección de entrega',
+                        ),
+                        const SizedBox(height: 12),
+                        _ShippingField(
+                          ctrl: calleCtrl,
+                          label: 'Calle y número',
+                          required: true,
+                          prefixIcon: Icons.home_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        _ShippingField(
+                          ctrl: aptoCtrl,
+                          label: 'Colonia / Depto. (opcional)',
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ShippingField(
+                                ctrl: ciudadCtrl,
+                                label: 'Ciudad',
+                                required: true,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ShippingField(
+                                ctrl: estadoCtrl,
+                                label: 'Estado',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ShippingField(
+                                ctrl: postalCtrl,
+                                label: 'Código postal',
+                                required: true,
+                                keyboard: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                // ignore: deprecated_member_use
+                                value: pais,
+                                decoration: InputDecoration(
+                                  labelText: 'País',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  contentPadding:
+                                      const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  isDense: true,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'Mexico',
+                                    child: Text('México'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'Peru',
+                                    child: Text('Perú'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'USA',
+                                    child: Text('USA'),
+                                  ),
+                                ],
+                                onChanged: (v) =>
+                                    setLocal(() => pais = v ?? pais),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // ── Botones de acción ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryPurple,
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        icon: const Icon(Icons.lock_outline, size: 18),
+                        label: const Text('Continuar al pago'),
+                        onPressed: () {
+                          if (!formKey.currentState!.validate()) return;
+                          Navigator.pop(ctx, {
+                            'nombre': nombreCtrl.text.trim(),
+                            'apellido': apellidoCtrl.text.trim(),
+                            'calle': calleCtrl.text.trim(),
+                            'apto': aptoCtrl.text.trim(),
+                            'ciudad': ciudadCtrl.text.trim(),
+                            'estado': estadoCtrl.text.trim(),
+                            'codigo_postal': postalCtrl.text.trim(),
+                            'pais': pais,
+                            'telefono': telefonoCtrl.text.trim(),
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _ShippingSectionLabel extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _ShippingSectionLabel({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: AppColors.primaryPurple),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: const TextStyle(
+            color: AppColors.primaryPurple,
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Divider(
+            color: AppColors.primaryPurple.withValues(alpha: 0.25),
+            thickness: 1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ShippingField extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String label;
+  final bool required;
+  final IconData? prefixIcon;
+  final TextInputType keyboard;
+
+  const _ShippingField({
+    required this.ctrl,
+    required this.label,
+    this.required = false,
+    this.prefixIcon,
+    this.keyboard = TextInputType.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: ctrl,
+      keyboardType: keyboard,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: prefixIcon != null
+            ? Icon(prefixIcon, size: 18, color: Colors.grey.shade600)
+            : null,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        isDense: true,
+      ),
+      validator: required
+          ? (v) =>
+              (v == null || v.trim().isEmpty) ? 'Campo requerido' : null
+          : null,
     );
   }
 }

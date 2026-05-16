@@ -27,8 +27,9 @@ class PaymentController extends Controller
     }
 
     /**
-     * Crea un PaymentIntent a partir del total enviado desde el frontend.
-     * Request JSON esperado: { "amount": 123.45 }
+     * Crea un PaymentIntent para el flujo móvil (PaymentSheet).
+     * Registra la orden en BD antes de cobrar y vincula el id_pedido como metadata.
+     * Request JSON: { amount, items[], nombre, apellido, calle, ciudad, codigo_postal, pais, ... }
      * Devuelve: { client_secret, publishableKey }
      */
     public function createPaymentIntent(Request $request)
@@ -40,31 +41,124 @@ class PaymentController extends Controller
 
         $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
+            'items'  => ['required', 'array'],
+            'calle'  => ['required', 'string', 'min:3', 'max:255'],
+            'ciudad' => ['required', 'string', 'min:2', 'max:100'],
+            'codigo_postal' => ['required', 'string', 'min:3', 'max:12'],
+            'pais'   => ['required', 'string', 'min:2', 'max:100'],
+            'nombre' => ['required', 'string', 'min:2', 'max:100'],
+            'apellido' => ['required', 'string', 'min:2', 'max:100'],
+            'apto'   => ['nullable', 'string', 'max:100'],
+            'estado' => ['nullable', 'string', 'max:100'],
+            'telefono' => ['nullable', 'string', 'min:7', 'max:20'],
         ]);
 
-    // Stripe espera el monto en centavos (integer)
-    $amountFloat = $request->input('amount');
-    $amount = (int) round($amountFloat * 100);
+        $amountFloat = (float) $request->input('amount');
+        $amountCents = (int) round($amountFloat * 100);
 
+        $items    = $request->input('items', []);
+        $nombre   = trim($request->input('nombre', ''));
+        $apellido = trim($request->input('apellido', ''));
+        $calle    = trim($request->input('calle', ''));
+        $apto     = trim($request->input('apto', '')) ?: null;
+        $ciudad   = trim($request->input('ciudad', ''));
+        $estado   = trim($request->input('estado', '')) ?: null;
+        $cp       = trim($request->input('codigo_postal', ''));
+        $pais     = trim($request->input('pais', ''));
+        $telefono = trim($request->input('telefono', '')) ?: null;
+
+        $discount  = (float) $request->input('discount', 0);
+        $ivaRate   = 0.16;
+        $total     = $amountFloat - $discount;
+        $subtotal  = $total / (1 + $ivaRate);
+
+        $direccionParts = array_filter([$calle, $apto]);
+        $localParts     = array_filter([$ciudad, $estado, $cp, $pais]);
+        if (!empty($localParts)) {
+            $direccionParts[] = implode(', ', $localParts);
+        }
+        $direccionEnvio = implode(' • ', $direccionParts);
+
+        $guiaParts = [trim("$nombre $apellido"), $direccionEnvio];
+        if ($telefono) $guiaParts[] = "Tel: $telefono";
+        $guiaEnvio = implode(' • ', $guiaParts);
+
+        $userId   = $request->user()?->id;
+        $pedidoId = null;
+
+        DB::beginTransaction();
         try {
+            $pedidoId = (string) Str::uuid();
+
+            DB::table('pedidos')->insert([
+                'id'             => $pedidoId,
+                'id_usuario'     => $userId,
+                'id_cupon'       => null,
+                'estado'         => 'pendiente',
+                'subtotal'       => round($subtotal, 2),
+                'descuento'      => $discount,
+                'total'          => round($total, 2),
+                'direccion_envio' => $direccionEnvio,
+                'guia_envio'     => $guiaEnvio,
+                'creado_en'      => now(),
+            ]);
+
+            foreach ($items as $it) {
+                $idProducto    = $it['id_producto'] ?? null;
+                $cantidad      = (int) ($it['cantidad'] ?? 1);
+                $precioUnitario = (float) ($it['precio_unitario'] ?? 0.0);
+                $nomProd       = $it['nombre_producto'] ?? null;
+                $imgProd       = $it['imagen_producto'] ?? null;
+
+                if ($idProducto) {
+                    $dbNombre = DB::table('productos')->where('id', $idProducto)->value('nombre');
+                    if ($dbNombre) $nomProd = $dbNombre;
+
+                    $img = DB::table('multimedia_producto')
+                        ->where('id_producto', $idProducto)
+                        ->where('es_principal', true)
+                        ->value('url_archivo');
+                    if (!$img) {
+                        $img = DB::table('multimedia_producto')
+                            ->where('id_producto', $idProducto)
+                            ->value('url_archivo');
+                    }
+                    if ($img) $imgProd = $img;
+                }
+
+                DB::table('items_pedido')->insert([
+                    'id_pedido'       => $pedidoId,
+                    'id_producto'     => $idProducto,
+                    'cantidad'        => $cantidad,
+                    'precio_unitario' => $precioUnitario,
+                    'nombre_producto' => $nomProd ?? 'Producto',
+                    'imagen_producto' => $imgProd,
+                    'created_at'      => now(),
+                    'updated_at'      => now(),
+                ]);
+            }
+
             $pi = PaymentIntent::create([
-                'amount' => $amount,
-                // Usar MXN (pesos mexicanos). Cambia si necesitas otra moneda.
+                'amount'   => $amountCents,
                 'currency' => 'mxn',
                 'automatic_payment_methods' => ['enabled' => true],
-                // metadata opcional: puedes incluir user id, orden id, etc.
                 'metadata' => [
-                    'platform' => 'musilux',
+                    'platform'   => 'musilux',
+                    'id_pedido'  => $pedidoId,
+                    'id_usuario' => (string) $userId,
                 ],
             ]);
 
+            DB::commit();
+
             return response()->json([
-                'client_secret' => $pi->client_secret,
+                'client_secret'  => $pi->client_secret,
                 'publishableKey' => config('services.stripe.key'),
             ]);
         } catch (\Exception $e) {
-            Log::error('Stripe createPaymentIntent error: ' . $e->getMessage());
-            return response()->json(['message' => 'Error creating payment intent'], 500);
+            DB::rollBack();
+            Log::error('createPaymentIntent error: ' . $e->getMessage());
+            return response()->json(['message' => 'Error al crear el pago'], 500);
         }
     }
 
@@ -342,7 +436,16 @@ class PaymentController extends Controller
                     }
                     break;
                 case 'payment_intent.succeeded':
-                    Log::info('PaymentIntent succeeded: ' . ($event['data']['object']['id'] ?? ''));
+                    $pi       = $event['data']['object'] ?? null;
+                    $pedidoId = $pi['metadata']['id_pedido'] ?? null;
+                    if ($pedidoId) {
+                        DB::table('pedidos')
+                            ->where('id', $pedidoId)
+                            ->update(['estado' => 'confirmado', 'actualizado_en' => now()]);
+                        Log::info('Pedido móvil confirmado: ' . $pedidoId);
+                    } else {
+                        Log::info('PaymentIntent succeeded sin id_pedido: ' . ($pi['id'] ?? ''));
+                    }
                     break;
             }
         }

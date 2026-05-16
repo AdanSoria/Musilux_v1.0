@@ -27,6 +27,12 @@ class InventarioDashboard extends StatelessWidget {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.store_outlined),
+            tooltip: 'Ver tienda',
+            onPressed: () =>
+                Navigator.pushNamed(context, AppRoutes.catalogoPublico),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await context.read<AuthProvider>().logout();

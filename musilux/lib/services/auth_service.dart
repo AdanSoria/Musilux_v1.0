@@ -12,7 +12,6 @@ class AuthService {
 
   // ── Registro ────────────────────────────────────────────
   Future<AuthResult> register({
-    required int idRol,
     required String nombres,
     required String apellidos,
     required String correo,
@@ -23,7 +22,6 @@ class AuthService {
         Uri.parse('$_baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({
-          'id_rol': idRol,
           'nombres': nombres,
           'apellidos': apellidos,
           'correo': correo,

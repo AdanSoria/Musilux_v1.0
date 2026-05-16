@@ -7,13 +7,14 @@ import '../../theme/colors.dart';
 class SuperAdminDashboard extends StatelessWidget {
   const SuperAdminDashboard({super.key});
 
-  static const _modulos = [
+  static const _todosLosModulos = [
     _Modulo(
       icon: Icons.inventory_2_outlined,
       label: 'Inventario',
       sublabel: 'Productos y stock',
       color: Colors.indigo,
       route: AppRoutes.inventarioDashboard,
+      permiso: 'productos.leer',
     ),
     _Modulo(
       icon: Icons.receipt_long_outlined,
@@ -21,6 +22,7 @@ class SuperAdminDashboard extends StatelessWidget {
       sublabel: 'Gestión de órdenes',
       color: Colors.orange,
       route: AppRoutes.pedidosDashboard,
+      permiso: 'pedidos.leer',
     ),
     _Modulo(
       icon: Icons.people_outlined,
@@ -28,6 +30,7 @@ class SuperAdminDashboard extends StatelessWidget {
       sublabel: 'Cuentas y roles',
       color: Colors.teal,
       route: AppRoutes.usuariosDashboard,
+      permiso: 'usuarios.leer',
     ),
     _Modulo(
       icon: Icons.bar_chart_outlined,
@@ -35,6 +38,7 @@ class SuperAdminDashboard extends StatelessWidget {
       sublabel: 'Reportes y métricas',
       color: Colors.green,
       route: AppRoutes.ventasDashboard,
+      permiso: 'reportes.leer',
     ),
     _Modulo(
       icon: Icons.support_agent_outlined,
@@ -42,6 +46,7 @@ class SuperAdminDashboard extends StatelessWidget {
       sublabel: 'Tickets de ayuda',
       color: Colors.blue,
       route: AppRoutes.soporteDashboard,
+      permiso: 'tickets.leer',
     ),
     _Modulo(
       icon: Icons.admin_panel_settings_outlined,
@@ -49,13 +54,20 @@ class SuperAdminDashboard extends StatelessWidget {
       sublabel: 'Panel de administración',
       color: Colors.deepPurple,
       route: AppRoutes.adminProducts,
+      permiso: 'productos.crear',
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final nombre = auth.usuario?.nombres ?? '';
+    final usuario = auth.usuario;
+    final nombre = usuario?.nombres ?? '';
+    final rolNombre = _formatRol(usuario?.rol);
+
+    final modulos = _todosLosModulos
+        .where((m) => usuario?.tienePermiso(m.permiso) ?? false)
+        .toList();
 
     return Scaffold(
       backgroundColor: AppColors.headerBg,
@@ -68,7 +80,8 @@ class SuperAdminDashboard extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.store_outlined),
             tooltip: 'Ver tienda',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.catalogoPublico),
+            onPressed: () =>
+                Navigator.pushNamed(context, AppRoutes.catalogoPublico),
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -88,15 +101,14 @@ class SuperAdminDashboard extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cabecera de bienvenida
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
             decoration: BoxDecoration(
-              color: AppColors.primaryPurple.withOpacity(0.08),
+              color: AppColors.primaryPurple.withValues(alpha:0.08),
               border: Border(
                 bottom: BorderSide(
-                  color: AppColors.primaryPurple.withOpacity(0.15),
+                  color: AppColors.primaryPurple.withValues(alpha:0.15),
                 ),
               ),
             ),
@@ -135,9 +147,9 @@ class SuperAdminDashboard extends StatelessWidget {
                         color: AppColors.primaryPurple,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Text(
-                        'Super Admin',
-                        style: TextStyle(
+                      child: Text(
+                        rolNombre,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -150,7 +162,6 @@ class SuperAdminDashboard extends StatelessWidget {
             ),
           ),
 
-          // Título de sección
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Text(
@@ -164,33 +175,50 @@ class SuperAdminDashboard extends StatelessWidget {
             ),
           ),
 
-          // Grid de módulos
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.1,
+          if (modulos.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'Sin módulos disponibles para tu rol.',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
-              itemCount: _modulos.length,
-              itemBuilder: (context, i) => _ModuloCard(modulo: _modulos[i]),
+            )
+          else
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.1,
+                ),
+                itemCount: modulos.length,
+                itemBuilder: (context, i) => _ModuloCard(modulo: modulos[i]),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
+
+  static String _formatRol(String? rol) {
+    if (rol == null || rol.isEmpty) return 'Administrador';
+    return rol
+        .split('_')
+        .map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '')
+        .join(' ');
+  }
 }
 
-// Datos inmutables de cada módulo — sin capturar contexto.
 class _Modulo {
   final IconData icon;
   final String label;
   final String sublabel;
   final Color color;
   final String route;
+  final String permiso;
 
   const _Modulo({
     required this.icon,
@@ -198,6 +226,7 @@ class _Modulo {
     required this.sublabel,
     required this.color,
     required this.route,
+    required this.permiso,
   });
 }
 
@@ -208,7 +237,6 @@ class _ModuloCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Navegación desde el contexto propio del card — nunca desde un contexto capturado.
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -221,7 +249,7 @@ class _ModuloCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircleAvatar(
-                backgroundColor: modulo.color.withOpacity(0.12),
+                backgroundColor: modulo.color.withValues(alpha:0.12),
                 radius: 28,
                 child: Icon(modulo.icon, color: modulo.color, size: 28),
               ),
@@ -238,10 +266,7 @@ class _ModuloCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 modulo.sublabel,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

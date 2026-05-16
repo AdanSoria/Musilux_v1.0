@@ -18,6 +18,7 @@ class UsuariosDashboard extends StatefulWidget {
 
 class _UsuariosDashboardState extends State<UsuariosDashboard> {
   List<dynamic> _usuarios = [];
+  List<Map<String, dynamic>> _roles = [];
   bool _cargando = true;
   String? _error;
 
@@ -25,6 +26,7 @@ class _UsuariosDashboardState extends State<UsuariosDashboard> {
   void initState() {
     super.initState();
     _cargarUsuarios();
+    _cargarRoles();
   }
 
   Future<void> _cargarUsuarios() async {
@@ -56,6 +58,110 @@ class _UsuariosDashboardState extends State<UsuariosDashboard> {
       setState(() => _error = 'No se pudo conectar al servidor.');
     } finally {
       setState(() => _cargando = false);
+    }
+  }
+
+  Future<void> _cargarRoles() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/roles'),
+        headers: {'Accept': 'application/json'},
+      );
+      if (response.statusCode == 200 && mounted) {
+        final raw = jsonDecode(response.body);
+        final list =
+            (raw is List ? raw : (raw['roles'] ?? raw['data'] ?? [])) as List;
+        setState(() => _roles = list.cast<Map<String, dynamic>>());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _cambiarRol(Map<String, dynamic> u) async {
+    if (_roles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cargando roles, intenta de nuevo.')),
+      );
+      return;
+    }
+
+    int? selectedRolId = u['id_rol'] as int?;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Cambiar rol'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Usuario: ${u['nombres']} ${u['apellidos']}'),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                // ignore: deprecated_member_use
+                value: selectedRolId,
+                decoration: const InputDecoration(
+                  labelText: 'Rol',
+                  border: OutlineInputBorder(),
+                ),
+                items: _roles
+                    .map(
+                      (r) => DropdownMenuItem<int>(
+                        value: r['id'] as int,
+                        child: Text(r['nombre']?.toString() ?? ''),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setLocal(() => selectedRolId = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryPurple,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'Guardar',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm != true || selectedRolId == null) return;
+
+    final token = await AuthService().getToken();
+    final response = await http.put(
+      Uri.parse('${ApiConstants.baseUrl}/admin/usuarios/${u['id']}'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'id_rol': selectedRolId}),
+    );
+
+    if (!mounted) return;
+
+    if (response.statusCode == 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rol actualizado correctamente.')),
+      );
+      _cargarUsuarios();
+    } else {
+      final msg =
+          jsonDecode(response.body)['message'] ?? 'Error al actualizar rol.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -121,6 +227,12 @@ class _UsuariosDashboardState extends State<UsuariosDashboard> {
           onPressed: () => Navigator.maybePop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.store_outlined),
+            tooltip: 'Ver tienda',
+            onPressed: () =>
+                Navigator.pushNamed(context, AppRoutes.catalogoPublico),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -202,21 +314,38 @@ class _UsuariosDashboardState extends State<UsuariosDashboard> {
                 ],
               ),
               isThreeLine: true,
-              trailing: RolGuard(
-                permiso: 'usuarios.eliminar',
-                child: IconButton(
-                  icon: Icon(
-                    activo ? Icons.block : Icons.check_circle_outline,
-                    color: activo ? Colors.red : Colors.green,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RolGuard(
+                    permiso: 'usuarios.actualizar',
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Colors.blue,
+                      ),
+                      tooltip: 'Cambiar rol',
+                      onPressed: () => _cambiarRol(u),
+                    ),
                   ),
-                  tooltip: activo ? 'Suspender' : 'Reactivar (manual en BD)',
-                  onPressed: activo
-                      ? () => _suspenderUsuario(
-                          u['id'].toString(),
-                          '${u['nombres']} ${u['apellidos']}',
-                        )
-                      : null,
-                ),
+                  RolGuard(
+                    permiso: 'usuarios.eliminar',
+                    child: IconButton(
+                      icon: Icon(
+                        activo ? Icons.block : Icons.check_circle_outline,
+                        color: activo ? Colors.red : Colors.green,
+                      ),
+                      tooltip:
+                          activo ? 'Suspender' : 'Reactivar (manual en BD)',
+                      onPressed: activo
+                          ? () => _suspenderUsuario(
+                              u['id'].toString(),
+                              '${u['nombres']} ${u['apellidos']}',
+                            )
+                          : null,
+                    ),
+                  ),
+                ],
               ),
             ),
           );

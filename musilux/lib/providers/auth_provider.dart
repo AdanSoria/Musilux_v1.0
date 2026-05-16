@@ -61,7 +61,6 @@ class AuthProvider extends ChangeNotifier {
 
   // ── Registro ─────────────────────────────────────────────────────────────
   Future<AuthResult> register({
-    required int idRol,
     required String nombres,
     required String apellidos,
     required String correo,
@@ -71,7 +70,6 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     final result = await _service.register(
-      idRol: idRol,
       nombres: nombres,
       apellidos: apellidos,
       correo: correo,
