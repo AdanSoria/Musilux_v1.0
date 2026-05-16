@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/colors.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
@@ -1091,17 +1092,21 @@ class _LineaCalculo extends StatelessWidget {
 
 // ── Checkout: formulario profesional de dirección de envío ────────────────────
 
-Future<Map<String, dynamic>?> _showShippingForm(BuildContext context) {
-  final formKey = GlobalKey<FormState>();
-  final nombreCtrl = TextEditingController();
-  final apellidoCtrl = TextEditingController();
-  final calleCtrl = TextEditingController();
-  final aptoCtrl = TextEditingController();
-  final ciudadCtrl = TextEditingController();
-  final estadoCtrl = TextEditingController();
-  final postalCtrl = TextEditingController();
-  final telefonoCtrl = TextEditingController();
-  String pais = 'Mexico';
+Future<Map<String, dynamic>?> _showShippingForm(BuildContext context) async {
+  final prefs = await SharedPreferences.getInstance();
+
+  final formKey      = GlobalKey<FormState>();
+  final nombreCtrl   = TextEditingController(text: prefs.getString('ship_nombre')   ?? '');
+  final apellidoCtrl = TextEditingController(text: prefs.getString('ship_apellido') ?? '');
+  final calleCtrl    = TextEditingController(text: prefs.getString('ship_calle')    ?? '');
+  final aptoCtrl     = TextEditingController(text: prefs.getString('ship_apto')     ?? '');
+  final ciudadCtrl   = TextEditingController(text: prefs.getString('ship_ciudad')   ?? '');
+  final estadoCtrl   = TextEditingController(text: prefs.getString('ship_estado')   ?? '');
+  final postalCtrl   = TextEditingController(text: prefs.getString('ship_postal')   ?? '');
+  final telefonoCtrl = TextEditingController(text: prefs.getString('ship_telefono') ?? '');
+  String pais = prefs.getString('ship_pais') ?? 'Mexico';
+
+  if (!context.mounted) return null;
 
   return showDialog<Map<String, dynamic>>(
     context: context,
@@ -1308,16 +1313,35 @@ Future<Map<String, dynamic>?> _showShippingForm(BuildContext context) {
                         label: const Text('Continuar al pago'),
                         onPressed: () {
                           if (!formKey.currentState!.validate()) return;
+                          final nombre   = nombreCtrl.text.trim();
+                          final apellido = apellidoCtrl.text.trim();
+                          final calle    = calleCtrl.text.trim();
+                          final apto     = aptoCtrl.text.trim();
+                          final ciudad   = ciudadCtrl.text.trim();
+                          final estado   = estadoCtrl.text.trim();
+                          final postal   = postalCtrl.text.trim();
+                          final telefono = telefonoCtrl.text.trim();
+                          // Save for next time (fire-and-forget)
+                          prefs
+                            ..setString('ship_nombre',   nombre)
+                            ..setString('ship_apellido', apellido)
+                            ..setString('ship_calle',    calle)
+                            ..setString('ship_apto',     apto)
+                            ..setString('ship_ciudad',   ciudad)
+                            ..setString('ship_estado',   estado)
+                            ..setString('ship_postal',   postal)
+                            ..setString('ship_telefono', telefono)
+                            ..setString('ship_pais',     pais);
                           Navigator.pop(ctx, {
-                            'nombre': nombreCtrl.text.trim(),
-                            'apellido': apellidoCtrl.text.trim(),
-                            'calle': calleCtrl.text.trim(),
-                            'apto': aptoCtrl.text.trim(),
-                            'ciudad': ciudadCtrl.text.trim(),
-                            'estado': estadoCtrl.text.trim(),
-                            'codigo_postal': postalCtrl.text.trim(),
-                            'pais': pais,
-                            'telefono': telefonoCtrl.text.trim(),
+                            'nombre':        nombre,
+                            'apellido':      apellido,
+                            'calle':         calle,
+                            'apto':          apto.isEmpty    ? null : apto,
+                            'ciudad':        ciudad,
+                            'estado':        estado.isEmpty  ? null : estado,
+                            'codigo_postal': postal,
+                            'pais':          pais,
+                            'telefono':      telefono.isEmpty ? null : telefono,
                           });
                         },
                       ),

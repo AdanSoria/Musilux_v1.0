@@ -126,10 +126,14 @@ class PaymentService {
       );
 
       if (resp.statusCode != 200) {
-        return {
-          'success': false,
-          'message': 'Error del servidor: ${resp.statusCode}',
-        };
+        String errMsg = 'Error del servidor: ${resp.statusCode}';
+        try {
+          final errBody = jsonDecode(resp.body) as Map<String, dynamic>;
+          final step   = errBody['step']?.toString();
+          final detail = errBody['detail']?.toString() ?? errBody['message']?.toString();
+          if (detail != null) errMsg = step != null ? '[$step] $detail' : detail;
+        } catch (_) {}
+        return {'success': false, 'message': errMsg};
       }
 
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
