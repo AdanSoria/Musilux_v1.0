@@ -71,6 +71,14 @@ flutter run
 ---
 
 ## 🛠️ Especificaciones Técnicas e Integraciones
+# Desde musilux/ (comando directo)
+flutter test --reporter=expanded
+
+# Desde la raíz del proyecto (script)
+.\scripts\test_flutter.ps1
+
+# Con reporte de cobertura
+.\scripts\test_flutter.ps1 -Coverage
 
 ### Arquitectura
 El sistema utiliza una **Arquitectura de Capas** para separar la interfaz de usuario de la lógica de negocio y el consumo de datos, facilitando el mantenimiento.
